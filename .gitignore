@@ -7,3 +7,6 @@ build/*
 
 #ignore objects and archives
 *.[oa]
+
+#ignore binaries
+bin/*
