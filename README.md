@@ -1,1 +1,1 @@
-This is an empty readme
+This repo will eventually be a collection of haskell scripts for everyday use. At the moment it contains only one.
