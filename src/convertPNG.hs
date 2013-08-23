@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, DeriveDataTypeable #-}
 
 import qualified Data.Map.Strict as Map
 import Data.Maybe
@@ -9,6 +9,8 @@ import Codec.Picture.Types(DynamicImage(..),Pixel(..),PixelRGBA16(..),Image(..),
                            ColorConvertible(..),pixelFold,promotePixel)
 import qualified Data.ByteString.Lazy as L
 import System.Environment(getArgs)
+import System.Console.CmdLib
+import Control.Monad
 
 
 {-
@@ -16,8 +18,44 @@ Possible command line arguments:
 --
 -}
 
-main = do
-    args <- getArgs
+data Main = Main { start :: (Int,Int), input :: String,
+                   output :: String, phases :: Phase }
+    deriving (Typeable, Data, Eq)
+
+instance Attributes Main where
+    attributes _ = group "Options" [
+        start  %> [ Help "Start position of the macro.",
+                    ArgHelp "(X,Y)",
+                    Default (0,0),
+                    Short ['s'],
+                    Long ["start"] ],
+        input  %> [ Help "Images to be converted to blueprints.",
+                    ArgHelp "FILENAME FILENAME ...",
+                    Required True,
+                    Short ['i'] ],
+        output %> [ Help "Name to use for blueprints, if not specified uses input name",
+                    ArgHelp "TEXT",
+                    Short ['o'],
+                    Long ["output"] ],
+        phases %> [ Help "Phase to create a blueprint for.",
+                    Default All,
+                    Short ['p'],
+                    Long ["phase"] ]
+        ]
+
+instance RecordCommand Main where
+    mode_summary _ = "Simple program to convert .png images into quickfort blueprints"
+
+data Phase = All
+           | Dig
+           | Build
+           | Place
+           | Query
+    deriving (Typeable, Data, Eq)
+
+main = getArgs >>= executeR Main {} >>= \opts ->
+    do
+        putStrLn (input opts)
 
 
 type LongPixel = (Int,Int,Int,Int)
@@ -42,7 +80,7 @@ parseQuery commands mapping = undefined
 unzipImage4 :: L.ByteString -> Maybe ([Int],[Int],[Int],[Int])
 unzipImage4 str = convert $ decodePng str
     where convert (Left s) = Nothing
-          convert (Right img) = Just (unzip4 img)
+          convert (Right img) = Just (unzip4 $ imageToList img)
 
 
 imageToList :: (Pixel p,ColorConvertible p PixelRGBA16) => 
