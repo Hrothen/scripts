@@ -5,46 +5,47 @@ import Data.Maybe
 import Data.Aeson
 import Data.List(unzip4)
 import Codec.Picture.Png(decodePng)
-import Codec.Picture.Types(DynamicImage(..),Pixel(..),PixelRGBA16(..),Image(..),
-                           ColorConvertible(..),pixelFold,promotePixel)
-import qualified Data.ByteString.Lazy as L
+--import Codec.Picture.Types(DynamicImage(..),Pixel(..),PixelRGBA16(..),Image(..),
+--                           ColorConvertible(..),pixelFold,promotePixel)
+import Codec.Picture.Types
+import qualified Data.ByteString as L
 import System.Environment(getArgs)
 import System.Console.CmdLib
 import Control.Monad
 
 
-{-
-Possible command line arguments:
---
--}
-
-data Main = Main { start :: (Int,Int), input :: String,
-                   output :: String, phases :: Phase }
+data Main = Main { start :: String, input :: String,
+                   output :: String, phases :: Phase,
+                   singlePhasePNG :: Bool }
     deriving (Typeable, Data, Eq)
 
 instance Attributes Main where
     attributes _ = group "Options" [
-        start  %> [ Help "Start position of the macro.",
-                    ArgHelp "(X,Y)",
-                    Default (0,0),
-                    Short ['s'],
-                    Long ["start"] ],
-        input  %> [ Help "Images to be converted to blueprints.",
-                    ArgHelp "FILENAME FILENAME ...",
-                    Required True,
-                    Short ['i'] ],
-        output %> [ Help "Name to use for blueprints, if not specified uses input name",
-                    ArgHelp "TEXT",
-                    Short ['o'],
-                    Long ["output"] ],
-        phases %> [ Help "Phase to create a blueprint for.",
-                    Default All,
-                    Short ['p'],
-                    Long ["phase"] ]
+        start          %> [ Help "Start position of the macro.",
+                            ArgHelp "(X,Y)",
+                            Default "(0,0)",
+                            Short ['s'],
+                            Long ["start"] ],
+        input          %> [ Help "Images to be converted to blueprints.",
+                            ArgHelp "FILENAME FILENAME ...",
+                            Required True,
+                            Short ['i'] ],
+        output         %> [ Help "Name to use for blueprints, if not specified uses input name",
+                            ArgHelp "TEXT",
+                            Short ['o'],
+                            Long ["output"] ],
+        phases         %> [ Help "Phase to create a blueprint for.",
+                            Long ["phase"],
+                            Default All,
+                            Short ['p'] ],
+        singlePhasePNG %> [ Help "If True, a pixel represents a single instruction. If False \
+                                 \a pixel represents an instruction for each phase",
+                            Long ["single-phase-png"],
+                            Default False ]
         ]
 
 instance RecordCommand Main where
-    mode_summary _ = "Simple program to convert .png images into quickfort blueprints"
+    mode_summary _ = "Simple program to convert RGBA encoded .png images into quickfort blueprints"
 
 data Phase = All
            | Dig
@@ -52,6 +53,13 @@ data Phase = All
            | Place
            | Query
     deriving (Typeable, Data, Eq)
+
+instance ColorConvertible PixelRGBA8 PixelRGBA16 where
+    {-# INLINE promotePixel #-}
+    promotePixel (PixelRGBA8 r g b a) = PixelRGBA16 (fromIntegral r)
+                                                    (fromIntegral g)
+                                                    (fromIntegral b)
+                                                    (fromIntegral a)
 
 main = getArgs >>= executeR Main {} >>= \opts ->
     do
@@ -83,11 +91,16 @@ unzipImage4 str = convert $ decodePng str
           convert (Right img) = Just (unzip4 $ imageToList img)
 
 
-imageToList :: (Pixel p,ColorConvertible p PixelRGBA16) => 
-                Image p -> [LongPixel]
-imageToList = reverse . pixelFold pred []
-    where pred acc _ _ pix = (promoteToTuple pix):acc
+--imageToList :: (Pixel p,ColorConvertible p PixelRGBA16) => 
+--                (Image p) -> [LongPixel]
+imageToList :: DynamicImage -> [LongPixel]
+imageToList (ImageRGBA8 img) = reverse $ pixelFold pixPred [] img
+imageToList (ImageRGBA16 img) = reverse $ pixelFold pixPred [] img
+imageToList _ = []
 
+
+pixPred :: (ColorConvertible a  PixelRGBA16) => [LongPixel] -> x -> x -> a -> [LongPixel]
+pixPred acc _ _ pix = (promoteToTuple pix):acc
 
 promoteToTuple :: (ColorConvertible pixel PixelRGBA16) => pixel -> LongPixel
 promoteToTuple p = pixelToTuple p' 
