@@ -13,3 +13,4 @@ build/*
 
 #ignore binaries
 bin/*
+*.exe

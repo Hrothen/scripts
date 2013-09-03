@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, DeriveDataTypeable #-}
 
-import qualified Data.Map.Strict as Map
+import qualified Data.Map.Strict as M
 import Data.Maybe
+import Data.Either
+import Data.Tuple
 import Data.Aeson
 import Data.List(unzip4)
 import Codec.Picture.Png(decodePng)
@@ -14,8 +16,8 @@ import System.Console.CmdLib
 import Control.Monad
 
 
-data Main = Main { start :: String, input :: String,
-                   output :: String, phases :: Phase,
+data Main = Main { start :: [Int], input :: String,
+                   output :: String, phases :: String,
                    singlePhasePNG :: Bool }
     deriving (Typeable, Data, Eq)
 
@@ -23,7 +25,7 @@ instance Attributes Main where
     attributes _ = group "Options" [
         start          %> [ Help "Start position of the macro.",
                             ArgHelp "(X,Y)",
-                            Default "(0,0)",
+                            Default "0,0",
                             Short ['s'],
                             Long ["start"] ],
         input          %> [ Help "Images to be converted to blueprints.",
@@ -35,8 +37,9 @@ instance Attributes Main where
                             Short ['o'],
                             Long ["output"] ],
         phases         %> [ Help "Phase to create a blueprint for.",
+                            ArgHelp "[All|Dig|Build|Place|Query]",
                             Long ["phase"],
-                            Default All,
+                            Default "All",
                             Short ['p'] ],
         singlePhasePNG %> [ Help "If True, a pixel represents a single instruction. If False \
                                  \a pixel represents an instruction for each phase",
@@ -52,7 +55,16 @@ data Phase = All
            | Build
            | Place
            | Query
-    deriving (Typeable, Data, Eq)
+    deriving (Typeable, Data, Eq, Read, Show)
+
+data Decoder = MultiPhase  { mdig   :: M.Map Int String,
+                             mbuild :: M.Map Int String,
+                             mplace :: M.Map Int String,
+                             mquery :: M.Map Int String }
+             | SinglePhase { sdig   :: M.Map LongPixel String,
+                             sbuild :: M.Map LongPixel String,
+                             splace :: M.Map LongPixel String,
+                             squery :: M.Map LongPixel String }
 
 instance ColorConvertible PixelRGBA8 PixelRGBA16 where
     {-# INLINE promotePixel #-}
@@ -63,15 +75,37 @@ instance ColorConvertible PixelRGBA8 PixelRGBA16 where
 
 main = getArgs >>= executeR Main {} >>= \opts ->
     do
+        {-
+        putStrLn $ show (start opts)
         putStrLn (input opts)
+        putStrLn (output opts)
+        putStrLn $ show (phases opts)
+        putStrLn $ show (singlePhasePNG opts)
+        -}
+        --imgFiles = words input opts
+        decoderStr <- readFile "pngconfig.json"
+        imgStrs <- mapM readFile $ words $ input opts
+        (strs,imgs) <- liftM partitionEithers $ map decodePng imgStrs
+        putStrLn $ show strs
 
+
+convertMultiPhase :: [Either String DynamicImage] -> L.ByteString -> Maybe Phase ->
+                      Either String BStringTuple
+convertMultiPhase imgStr decStr phase | phase == Nothing = Left "Ivalid phase declaration"
+                                      | strs /= null = Left $ unlines strs
+                                      | decoder == Nothing = Left "Error parsing pngconfig.json"
+                                      | otherwise = convertMultiPhase' imgs (fromJust decoder) (fromJust phase)
+    where (strs,imgs) = partitionEithers $ map decodePng imgStr
+          decoder     = decode decStr :: Maybe (M.Map String LongPixel)
+          convertMultiPhase' = undefined
 
 type LongPixel = (Int,Int,Int,Int)
+type BStringTuple = (L.ByteString,L.ByteString,L.ByteString,L.ByteString)
 
-convertPNGToCSV :: L.ByteString -> L.ByteString -> Maybe L.ByteString
-convertPNGToCSV img schema = undefined
 
---doThing :: DynamicImage -> (a -> b) -> L.ByteString
+invert :: (Ord b) => M.Map a b -> M.Map b a
+invert = M.fromList . swap . M.toList
+
 
 parseDig :: [Int] -> (Int -> String) -> Maybe String
 parseDig commands mapping = undefined
@@ -91,12 +125,11 @@ unzipImage4 str = convert $ decodePng str
           convert (Right img) = Just (unzip4 $ imageToList img)
 
 
---imageToList :: (Pixel p,ColorConvertible p PixelRGBA16) => 
---                (Image p) -> [LongPixel]
-imageToList :: DynamicImage -> [LongPixel]
-imageToList (ImageRGBA8 img) = reverse $ pixelFold pixPred [] img
-imageToList (ImageRGBA16 img) = reverse $ pixelFold pixPred [] img
-imageToList _ = []
+
+imageToList :: DynamicImage -> Either String [LongPixel]
+imageToList (ImageRGBA8 img) = Right $ reverse $ pixelFold pixPred [] img
+imageToList (ImageRGBA16 img) = Right $ reverse $ pixelFold pixPred [] img
+imageToList _ = Left "Unsupported png format, use RGBA8 or RGBA16 encoding"
 
 
 pixPred :: (ColorConvertible a  PixelRGBA16) => [LongPixel] -> x -> x -> a -> [LongPixel]
