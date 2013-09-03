@@ -27,9 +27,8 @@ main = getArgs >>= executeR Main {} >>= \opts ->
        text <- L.readFile $ infile opts
        tweets <- return $ genTweets text
        L.writeFile (out opts) tweets
-  where out opts = case (outfile opts) of
-                    null -> "tweets.txt"
-                    _    -> outfile opts
+  where out opts | null $ outfile opts = "tweets.txt"
+                 | otherwise = outfile opts
 
 
 genTweets :: L.ByteString -> L.ByteString
