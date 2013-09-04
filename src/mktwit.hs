@@ -1,6 +1,7 @@
 -- mktwit.hs: Cuts a set of text down to chunks of no more than 140 characters suitable for tweeting.
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, OverloadedStrings, BangPatterns #-}
 import qualified Data.ByteString.Lazy.Char8 as L
+import Data.Int(Int64)
 import Control.Monad
 import System.Console.CmdLib
 
@@ -32,10 +33,17 @@ main = getArgs >>= executeR Main {} >>= \opts ->
 
 
 genTweets :: L.ByteString -> L.ByteString
-genTweets text | L.null text = L.pack ""
-               | otherwise = L.intercalate (L.pack "\n\n") $ genTweets' $ L.words text
-  where genTweets' txt = foldr p [] txt
-          where p word [] = [word]
-                p word words@(w:ws) | L.length word + L.length w <= 139 =
-                                        (word `L.append` L.pack " " `L.append` w):ws
-                                    | otherwise = word:words
+genTweets text | L.null text = ""
+               | otherwise = L.intercalate "\n\n" $ genTweets' $ L.words text
+  where
+    genTweets' :: [L.ByteString] -> [L.ByteString]
+    genTweets' []     = []
+    genTweets' [w]    = [w]
+    genTweets' (w:ws) = go (L.length w, w) ws
+
+    go :: (Int64,L.ByteString) -> [L.ByteString] -> [L.ByteString]
+    go (_len, !tweet) [] = [tweet]
+    go (!len, !tweet) (w:ws) | wlen + len <= 139 = go (len + wlen + 1,w') ws
+                             | otherwise = tweet : go (wlen, w) ws
+      where wlen = L.length w
+            w'   = tweet `L.append` " " `L.append` w
