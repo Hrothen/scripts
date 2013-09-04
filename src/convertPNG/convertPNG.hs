@@ -102,6 +102,9 @@ convertMultiPhase imgStr decStr phase | phase == Nothing = Left "Ivalid phase de
 type LongPixel = (Int,Int,Int,Int)
 type BStringTuple = (L.ByteString,L.ByteString,L.ByteString,L.ByteString)
 
+-- color representations:
+-- base ten: <val>:<val>:<val>:<val>
+-- hex: #<val><val><val><val> or 0x<val><val><val><val>
 
 invert :: (Ord b) => M.Map a b -> M.Map b a
 invert = M.fromList . swap . M.toList
