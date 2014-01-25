@@ -34,7 +34,7 @@ main = getArgs >>= executeR Main {} >>= \opts ->
 
 genTweets :: L.ByteString -> L.ByteString
 genTweets text | L.null text = ""
-               | otherwise = L.intercalate "\n\n" $ genTweets' $ L.words text
+               | otherwise = L.intercalate "\n" $ genTweets' $ L.words text
   where
     genTweets' :: [L.ByteString] -> [L.ByteString]
     genTweets' []     = []
